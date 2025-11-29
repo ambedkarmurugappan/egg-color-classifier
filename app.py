@@ -1,39 +1,41 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-import tflite_runtime.interpreter as tflite
 
-# Load TFLite model
-interpreter = tflite.Interpreter(model_path="egg_color_model.tflite")
-interpreter.allocate_tensors()
-
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-
-class_names = ["Black", "Brown", "Violet", "White"]
-
-st.title("🐣 Egg Color Classification")
-st.write("Upload an egg image to classify its color.")
+st.title("🐣 Egg Color Classifier (Simple Version)")
+st.write("Upload an egg image. The app will guess whether it is Black, Brown, Violet, or White based on its average color.")
 
 uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
+# Reference RGB values for each shell color (you can tweak these)
+reference_colors = {
+    "Black":  np.array([40, 40, 40], dtype=np.float32),
+    "Brown":  np.array([140, 100, 70], dtype=np.float32),
+    "Violet": np.array([120, 80, 150], dtype=np.float32),
+    "White":  np.array([230, 230, 230], dtype=np.float32),
+}
+
 if uploaded_file is not None:
-    img = Image.open(uploaded_file)
+    img = Image.open(uploaded_file).convert("RGB")
     st.image(img, caption="Uploaded Image", use_column_width=True)
 
-    # Preprocess
-    img = img.resize((150, 150))
-    img_array = np.array(img, dtype=np.float32) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
+    # Resize to reduce noise and speed up computation
+    img_small = img.resize((150, 150))
+    img_arr = np.array(img_small, dtype=np.float32)
 
-    # Run TFLite model
-    interpreter.set_tensor(input_details[0]['index'], img_array)
-    interpreter.invoke()
-    prediction = interpreter.get_tensor(output_details[0]['index'])[0]
+    # Compute average color
+    avg_color = img_arr.mean(axis=(0, 1))  # shape (3,)
+    st.write(f"Average RGB: {avg_color.astype(int)}")
 
-    index = int(np.argmax(prediction))
-    color = class_names[index]
-    confidence = float(prediction[index]) * 100
+    # Compute distance between avg_color and each reference color
+    best_label = None
+    best_distance = float("inf")
 
-    st.success(f"🎨 Detected Color: **{color}**")
-    st.write(f"Confidence: {confidence:.2f}%")
+    for label, ref in reference_colors.items():
+        dist = np.linalg.norm(avg_color - ref)
+        if dist < best_distance:
+            best_distance = dist
+            best_label = label
+
+    st.success(f"🎨 Detected Color: **{best_label}**")
+    st.write(f"(Lower distance = better match, distance = {best_distance:.2f})")
